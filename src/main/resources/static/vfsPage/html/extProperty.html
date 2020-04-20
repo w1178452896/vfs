@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>虚拟文件系统元数据</title>
+    <!-- import CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/element-ui@2.8.2/lib/theme-chalk/index.css">
+    <link rel="stylesheet" href="../css/index.css"></link>
+    <script src="../js/vue.js"></script>
+    <!-- import JavaScript -->
+    <script src="https://unpkg.com/element-ui@2.8.2/lib/index.js"></script>
+    <script src="https://unpkg.com/axios@0.18.1/dist/axios.min.js"></script>
+</head>
+<body>
+<div id="app">
+    <el-container>
+        <el-header>
+            <el-row style="float:left">
+                <el-button @click="showAddDialog" size="small"  type="primary" icon="el-icon-circle-plus"  >添加属性</el-button>
+            </el-row>
+        </el-header>
+        <el-main style="background-color: #ffffff;color: #333;text-align: center;height: 100%;padding-top: 0px;;
+">
+            <el-table
+                    ref="multipleTable"
+                    :data="tableData"
+                    height="100%"
+                    tooltip-effect="dark"
+                    style="width: 100%">
+                <el-table-column
+                    prop="name"
+                    label="名称"
+                    width=""
+                    show-overflow-tooltip>
+                </el-table-column>
+                <el-table-column
+                        prop="caption"
+                        label="标题"
+                        width=""
+                        show-overflow-tooltip>
+                </el-table-column>
+                <el-table-column
+                        prop="editor"
+                        label="编辑类型"
+                        width=""
+                        show-overflow-tooltip>
+                    <template slot-scope="scope">
+                        <span v-text="getEditor(scope.row.editor)" ></span>
+                    </template>
+                </el-table-column>
+                <el-table-column
+                        prop="dispaly"
+                        label="显示方式"
+                        width=""
+                        show-overflow-tooltip>
+                    <template slot-scope="scope">
+                        <span v-if="scope.row.display=='hidden'" >隐藏</span>
+                        <span v-else-if="scope.row.display=='editable'" >可编辑</span>
+                        <span v-else  >显示</span>
+                    </template>
+                </el-table-column>
+                <el-table-column
+                        prop="type"
+                        label="字段类型"
+                        width=""
+                        show-overflow-tooltip>
+                    <template slot-scope="scope">
+                        <span v-text="getType(scope.row.type)" ></span>
+                    </template>
+                </el-table-column>
+                <el-table-column
+                        prop="nullable"
+                        label="允许为空"
+                        width=""
+                        show-overflow-tooltip>
+                    <template slot-scope="scope">
+                        <span  v-if="scope.row.nullable">是</span>
+                        <span  v-else>否</span>
+                    </template>
+                </el-table-column>
+                <el-table-column
+                        label="操作"
+                        width="120px">
+                    <template slot-scope="scope">
+                        <el-button @click="showEditDialog(scope.row)" size="small"  type="info" icon="el-icon-edit"  circle title="编辑"></el-button>
+                        <el-button @click="deleteRow(scope.row)" size="small"  type="danger" icon="el-icon-delete" circle title="删除"></el-button>
+                    </template>
+                </el-table-column>
+            </el-table>
+        </el-main>
+    </el-container>
+    <el-dialog  :visible.sync="propertyDialog.visible">
+        <span slot="title" class="dialog-title" v-text="propertyDialog.title">
+        </span>
+        <!--:model="numberValidateForm"-->
+        <el-form :model="propertyDialog.formData" ref="extForm" label-width="100px" class="demo-ruleForm">
+            <el-form-item
+                    label="名称"
+                    prop="name"
+                    :rules="[
+      { required: true, message: '名称不能为空'},{ max: 20, message: '长度不能超过20个字符！', trigger: 'blur' }]"
+            >
+                <el-input type="text" v-model="propertyDialog.formData.name" autocomplete="off" :disabled="propertyDialog.state=='edit'"></el-input>
+            </el-form-item>
+            <el-form-item
+                    label="标题"
+                    prop="caption"
+                    :rules="[
+      { required: true, message: '标题不能为空'},{ max: 20, message: '长度不能超过20个字符！', trigger: 'blur' }]"
+            >
+                <el-input type="text" v-model="propertyDialog.formData.caption" autocomplete="off"></el-input>
+            </el-form-item>
+            <el-form-item
+                    label="显示方式"
+                    prop="display"
+                    :rules="[
+      { required: true, message: '显示方式不能为空'}]">
+                <el-select v-model="propertyDialog.formData.display" placeholder="请选择">
+                    <el-option
+                            v-for="item in displayOptions"
+                            :key="item.value"
+                            :label="item.label"
+                            :value="item.value"
+                            :disabled="item.disabled">
+                    </el-option>
+                </el-select>
+            </el-form-item>
+            <el-form-item
+                    label="允许为空"
+                    prop="nullable"
+                    >
+                <el-checkbox v-model="propertyDialog.formData.nullable"></el-checkbox>
+            </el-form-item>
+        </el-form>
+        <div slot="footer" class="dialog-footer" >
+            <el-button @click = "propertyDialog.visible = false">取 消</el-button>
+            <el-button type="primary" @click="submit">确 定</el-button>
+        </div>
+    </el-dialog>
+</div>
+<script>
+    Vue.prototype.$ajax = axios;
+    axios.defaults.baseURL = '../../vfsMetaData/';
+    // axios.defaults.headers.common['Authorization'] = AUTH_TOKEN;
+    // axios.defaults.headers.post['Content-Type'] = 'application/x-www-form-urlencoded';
+    axios.interceptors.request.use(function (config) {
+        return config;
+    }, function (err) {
+        Message.error({message: '请求超时!'});
+        return Promise.reject(err);
+    })
+    axios.interceptors.response.use(function (data) {
+        if (data.status && data.status == 200 && data.data.status == 'error') {
+            ELEMENT.Message.error( data.data.msg);
+        }
+        return data;
+    }, function (err) {
+        if (err.response.status == 504 || err.response.status == 404) {
+            ELEMENT.Message.error({message: '服务器被吃了⊙﹏⊙∥'});
+        } else if (err.response.status == 403) {
+            ELEMENT.Message.error({message: '权限不足,请联系管理员!'});
+        } else {
+            ELEMENT.Message.error( err.response.data.message);
+        }
+        return Promise.reject(err);
+    })
+
+    new Vue({
+        el: '#app',
+        data : function () {
+            return {
+                tableData : [],
+                propertyDialog : {
+                    state : "",
+                    visible : false,
+                    title : "",
+                    formData : {}
+                },
+                displayOptions : [{
+                    value : "hidden",
+                    label : "隐藏"
+                },{
+                    value : "editable",
+                    label : "可编辑"
+                },{
+                    value : "show",
+                    label : "显示"
+                }],
+                editorOpions : {
+                    input : "输入框"
+                },
+                typeOptions : {
+                    C : "字符型"
+                }
+            };
+        },
+        created(){
+            this.showAll();
+        },
+        methods : {
+            showAll(){
+                var self = this;
+                this.$ajax.get("").then(function (res) {
+                    self.tableData = res.data;
+                })
+            },
+            showAddDialog(){
+                this.propertyDialog.title = "添加属性";
+                this.propertyDialog.state = 'add';
+                this.propertyDialog.formData = {};
+                this.propertyDialog.visible = true;
+            },
+            getEditor(editor){
+                return this.editorOpions[editor];
+            },
+            getType(type){
+                return this.typeOptions[type];
+            },
+            showEditDialog(row){
+                this.propertyDialog.title = "编辑属性";
+                this.propertyDialog.state = 'edit';
+                this.propertyDialog.formData = this.deepCopy(row);
+                this.propertyDialog.visible = true;
+            },
+            deleteRow(row){
+                var self = this;
+                this.$ajax.delete("/"+row.name).then(function (res) {
+                    self.$message.success("删除成功!");
+                    self.showAll();
+                });
+            },
+            submit(){
+                this.$refs.extForm.validate(function (bool,obj) {
+                    if (!bool){
+                        this.$message.error("请正确填写表单！");
+                        return false;
+                    }else{
+                        if (this.propertyDialog.state=="add"){
+                            this.add();
+                        } else{
+                            this.edit();
+                        }
+                    }
+                }.bind(this))
+
+            },
+            add(){
+                var self = this;
+                this.$ajax.post("", self.propertyDialog.formData).then(function (res) {
+                    self.$message.success("添加成功!");
+                    self.propertyDialog.visible = false;
+                    self.showAll();
+                })
+            },
+            edit(){
+                var self = this;
+                this.$ajax.put("/"+self.propertyDialog.formData.name, self.propertyDialog.formData).then(function (res) {
+                    self.$message.success("编辑成功!");
+                    self.propertyDialog.visible = false;
+                    self.showAll();
+                })
+            },
+            deepCopy(obj) {
+                var result = Array.isArray(obj) ? [] : {};
+                for (var key in obj) {
+                    if (obj.hasOwnProperty(key)) {
+                        if (typeof obj[key] === 'object' && obj[key]!==null) {
+                            result[key] = this.deepCopy(obj[key]);   //递归复制
+                        } else {
+                            result[key] = obj[key];
+                        }
+                    }
+                }
+                return result;
+            }
+        }
+
+    });
+
+
+</script>
+
+</body>
+</html>

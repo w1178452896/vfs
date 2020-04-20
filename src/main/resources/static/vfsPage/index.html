@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="en">
+<link>
+    <meta charset="UTF-8">
+    <title>虚拟文件系统</title>
+
+    <!-- import CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/element-ui@2.8.2/lib/theme-chalk/index.css">
+    <link rel="stylesheet" href="./css/index.css"></link>
+    <script src="./js/vue.js"></script>
+    <!-- import JavaScript -->
+    <script src="https://unpkg.com/element-ui@2.8.2/lib/index.js"></script>
+    <script src="https://unpkg.com/axios@0.18.1/dist/axios.min.js"></script>
+
+</head>
+<body>
+<div id="app">
+
+    <el-container>
+        <el-header>
+            <el-row style="float:left;display: inline-block">
+                <el-button @click="repaireTableDate" size="small"  type="primary" icon="el-icon-refresh" circle title="刷新"></el-button>
+                <el-button @click="rename" size="small"  type="warning" icon="el-icon-edit" circle title="重命名"></el-button>
+                <el-button @click="addFile" size="small"  type="warning" icon="el-icon-document-add" circle title="添加文件"></el-button>
+                <el-button @click="addFolder" size="small" type="warning" icon="el-icon-folder-add" circle title="添加文件夹"></el-button>
+                <el-button @click="showEditDialog" size="small"  type="warning" icon="el-icon-edit" circle title="编辑"></el-button>
+                <el-button @click="showMoveDialog" size="small"  type="warning" icon="el-icon-top-right" circle title="移动"></el-button>
+                <el-button @click="download" size="small" type="warning" icon="el-icon-download" circle title="下载"></el-button>
+                <el-button @click="upload" size="small" type="warning" icon="el-icon-upload" circle title="上传"></el-button>
+                <el-button @click="remove" size="small" type="danger" icon="el-icon-delete" circle title="删除"></el-button>
+                <el-button @click="openMetaDataPage()" size="small"  icon="el-icon-view" circle title="查看元数据"></el-button>
+<!--                <el-popover-->
+<!--                        placement="right"-->
+<!--                        v-model="moreOperationVisible"-->
+<!--                        style="margin-left: 10px;min-width: 50px">-->
+<!--                    <el-row >-->
+<!--                        <el-button @click="showEditDialog" size="small"  type="warning" icon="el-icon-edit" circle title="编辑"></el-button>-->
+<!--                        <el-button @click="showMoveDialog" size="small"  type="warning" icon="el-icon-top-right" circle title="移动"></el-button>-->
+<!--                        <el-button @click="openMetaDataPage()" size="small"  icon="el-icon-view" circle title="查看元数据"></el-button>-->
+<!--                    </el-row>-->
+<!--                    <el-button slot="reference" @click="" size="small" type="info" icon="el-icon-more" circle title="更多操作"></el-button>-->
+<!--                </el-popover>-->
+            </el-row>
+            <div  style="float:right;display: inline-block">
+                <el-input
+                        placeholder="根据文件名称搜索"
+                        v-model="searchValue" maxlength="20"  size="small">
+                    <a style="text-decoration: none" slot="suffix" href="javascript:void(0)" @click="search" class="el-input__icon el-icon-search"></a>
+                </el-input>
+            </div>
+        </el-header>
+        <el-main id="table">
+            <el-breadcrumb style="padding-top: 0px;margin-bottom: 5px" separator="/">
+                <el-breadcrumb-item  >
+                    <a href="javascript:void(0);" @click="hell(rootChar)" >{{rootChar}}</a>
+                </el-breadcrumb-item>
+                <el-breadcrumb-item v-for=" item,index in  getBreadCrumbItems(parentDir)" :key="index">
+                    <a href="javascript:void(0);" @click="hell(index)" v-html="item"></a>
+                </el-breadcrumb-item>
+            </el-breadcrumb>
+            <el-table
+                    ref="multipleTable"
+                    v-loading.fullscreen.lock="tableLoading"
+                    element-loading-text="拼命加载中"
+                    element-loading-spinner="el-icon-loading"
+                    :data="tableData"
+                    tooltip-effect="dark"
+                    style="width: 100%"
+                    height="100%"
+                    stripe
+                    border
+                    resizable
+                    @selection-change="handleSelectionChange">
+                <el-table-column
+                        type="selection"
+                        width="30px">
+                </el-table-column>
+                <el-table-column
+                        label="文件名称"
+                        min-width="120px"
+                        align="center">
+                    <template slot="header">
+                        <el-tooltip  effect="dark" content="文件名称" placement="top">
+                                <span style="overflow: hidden;white-space: nowrap;text-overflow: ellipsis;" width="100%" >
+                                    文件名称
+                                </span>
+                        </el-tooltip>
+                    </template>
+                    <template slot-scope="scope">
+                        <el-tooltip  effect="dark" :content="scope.row.parentDir+scope.row.name" placement="top">
+                            <a  style="text-decoration: none;overflow: hidden;white-space: nowrap;text-overflow: ellipsis" href="javascript:void(0);" @click="showChildsOrContent(scope.row)"  width="100%" >
+                                <span class="el-icon-folder" v-if="scope.row.dir"></span>
+                                <span class="el-icon-document" v-else ></span>
+                                {{ scope.row.name }}
+                            </a>
+                        </el-tooltip>
+                    </template>
+                </el-table-column>
+                <el-table-column
+                        prop="size"
+                        label="文件大小"
+                        min-width="100px"
+                        align="center"
+                        show-overflow-tooltip>
+                    <template slot="header">
+                        <el-tooltip  effect="dark" content="文件大小" placement="top">
+                                <span style="overflow: hidden;white-space: nowrap;text-overflow: ellipsis;" width="100%" >
+                                    文件大小
+                                </span>
+                        </el-tooltip>
+                    </template>
+                    <template slot-scope="scope">
+                        <span v-if="scope.row.dir">--</span>
+                        <span v-else="scope.row.dir" v-text="scope.row.size+'k'"></span>
+                    </template>
+                </el-table-column>
+                <el-table-column
+                        prop="updateDate"
+                        label="修改时间"
+                        min-width="140px"
+                        align="center"
+                        show-overflow-tooltip>
+                    <template slot="header">
+                        <el-tooltip  effect="dark" content="修改时间" placement="top">
+                                <span style="overflow: hidden;white-space: nowrap;text-overflow: ellipsis;" width="100%" >
+                                    修改时间
+                                </span>
+                        </el-tooltip>
+                    </template>
+                </el-table-column>
+                <el-table-column
+                        prop="charset"
+                        label="文件编码"
+                        min-width="120px"
+                        align="center"
+                        show-overflow-tooltip>
+                    <template slot="header">
+                        <el-tooltip  effect="dark" content="文件编码" placement="top">
+                                <span style="overflow: hidden;white-space: nowrap;text-overflow: ellipsis;" width="100%" >
+                                    文件编码
+                                </span>
+                        </el-tooltip>
+                    </template>
+                    <template slot-scope="scope">
+                        <span v-if="scope.row.dir">--</span>
+                        <span v-else="scope.row.dir" v-text="scope.row.charset"></span>
+                    </template>
+                </el-table-column>
+                <el-table-column
+                        prop="type"
+                        label="文件类型"
+                        align="center"
+                        min-width="120px"
+                        show-overflow-tooltip>
+                    <template slot="header">
+                        <el-tooltip  effect="dark" content="文件类型" placement="top">
+                                <span style="overflow: hidden;white-space: nowrap;text-overflow: ellipsis;" width="100%" >
+                                    文件类型
+                                </span>
+                        </el-tooltip>
+                    </template>
+                    <template slot-scope="scope">
+                        <span v-if="scope.row.dir">--</span>
+                        <span v-else="scope.row.dir" v-text="scope.row.type"></span>
+                    </template>
+                </el-table-column>
+                <template v-for="item in metaData">
+                    <el-table-column
+                        :prop="'ext.'+item.name" :label="item.caption" v-if="item.display=='show'" show-overflow-tooltip align="center">
+                        <template slot="header">
+                            <el-tooltip  effect="dark" :content="item.caption" placement="top">
+                                <span style="overflow: hidden;white-space: nowrap;text-overflow: ellipsis;" width="100%" >
+                                    {{ item.caption }}
+                                </span>
+                            </el-tooltip>
+                         </template>
+                        <template slot-scope="scope">
+                            <span  width="100%" >
+                                {{ scope.row.ext[item.name] }}
+                            </span>
+                        </template>
+                    </el-table-column>
+                </template>
+            </el-table>
+            <!--<div style="margin-top: 20px">-->
+                <!--<el-button @click="toggleSelection([tableData[1], tableData[2]])">切换第二、第三行的选中状态</el-button>-->
+                <!--<el-button @click="toggleSelection()">取消选择</el-button>-->
+            <!--</div>-->
+        </el-main>
+    </el-container>
+    <!-- 编辑器弹窗-->
+    <el-dialog  :visible.sync="editorDialog.visible" id="editorDialog">
+        <span slot="title" class="dialog-title" v-text="editorDialog.title">
+        </span>
+        <el-input
+                type="textarea"
+                :rows="15"
+                placeholder=""
+                v-model="editorDialog.textarea">
+        </el-input>
+        <div slot="footer" class="dialog-footer" >
+            <el-button @click = "editorDialog.visible = false">取 消</el-button>
+            <el-button type="primary" @click="onOk4Editor">确 定</el-button>
+        </div>
+    </el-dialog>
+    <!-- 重名名，添加文件，添加文件夹弹窗   -->
+    <el-dialog  :visible.sync="nameDialog.nameDialogVisible" :modal-append-to-body="false">
+        <span slot="title" class="dialog-title" v-text="nameDialog.nameTitle">
+        </span>
+        <!--:model="numberValidateForm"-->
+        <el-form :model="nameDialog.nameDialogForm" ref="nameDialogForm" label-width="100px" >
+            <el-form-item
+                    label="文件名"
+                    prop="name"
+                    :rules="[
+      { required: true, message: '文件名不能为空'},
+      { validator:validName,trigger:'blur'}]"
+            >
+                <el-input type="text" v-model="nameDialog.nameDialogForm.name" autocomplete="off"></el-input>
+            </el-form-item>
+        </el-form>
+        <div slot="footer" class="dialog-footer" >
+            <el-button @click = "nameDialog.nameDialogVisible = false">取 消</el-button>
+            <el-button type="primary" @click="onOk4NameDialog">确 定</el-button>
+        </div>
+    </el-dialog>
+    <!--  文件上传弹窗  -->
+    <el-dialog  :visible.sync="uploadDialog.visible" title="文件上传" @close="closeOfuploadDialogEvent">
+        <el-upload
+                class="upload-vfs"
+                ref="upload"
+                action="file/upload"
+                :on-preview="handlePreview"
+                :on-remove="handleRemove"
+                :file-list="uploadDialog.fileList"
+                :data="getUploadParams()"
+                :auto-upload="false"
+                :on-error = "uploadError"
+                :on-success="uploadSuccess"
+                :before-upload="uploadBefore"
+                multiple
+                drag
+
+        >
+            <i class="el-icon-upload"></i>
+            <div class="el-upload__text">将文件拖到此处，或<em>点击上传</em></div>
+            <el-button slot="tip" style="margin-left: 10px" size="small" type="success" @click="submitUpload">上传到服务器</el-button>
+        </el-upload>
+    </el-dialog>
+    <!-- 编辑弹窗-->
+    <el-dialog  :visible.sync="editDialog.visible" >
+        <span slot="title" class="dialog-title" >属性编辑</span>
+        <el-container >
+            <el-main style="height: 300px" >
+                <el-form style="width: 100%" :model="editDialog.formData" :rules="editDialog.rules"  size="mini" label-position="left" ref="editDialogForm" label-width="100px" >
+                    <el-form-item
+                            label="父目录"
+                            prop="parentDir">
+                        <el-input type="text" v-model="editDialog.formData.parentDir" autocomplete="off" :disabled="true"></el-input>
+                    </el-form-item>
+                    <el-form-item
+                            label="文件名"
+                            prop="name">
+                        <el-input type="text" v-model="editDialog.formData.name" autocomplete="off" :disabled="true"></el-input>
+                    </el-form-item>
+                    <el-form-item
+                            label="文件大小"
+                            prop="size">
+                        <el-input type="text" v-model="editDialog.formData.size" autocomplete="off" :disabled="true"></el-input>
+                    </el-form-item>
+                    <el-form-item
+                            label="修改时间"
+                            prop="updateDate">
+                        <el-input type="text" v-model="editDialog.formData.updateDate" autocomplete="off" :disabled="true"></el-input>
+                    </el-form-item>
+                    <el-form-item
+                            label="文件编码"
+                            prop="charset">
+                        <el-input type="text" v-model="editDialog.formData.charset" autocomplete="off" :disabled="true"></el-input>
+                    </el-form-item>
+                    <el-form-item
+                            label="文件类型"
+                            prop="type">
+                        <el-input type="text" v-model="editDialog.formData.type" autocomplete="off" :disabled="true"></el-input>
+                    </el-form-item>
+                    <template v-for="item in metaData">
+                        <el-form-item
+                                :label="item.caption"
+                                :prop="'ext.'+item.name"
+                                v-if="item.display != 'hidden'"
+                                :rules="getRules(item)">
+                            <el-input type="text" v-model="item.value" autocomplete="off"  @input="inputOfExtPro(item.name,item.value)"></el-input>
+                        </el-form-item>
+                    </template>
+                </el-form>
+            </el-main>
+        </el-container>
+        <div slot="footer" class="dialog-footer" >
+            <el-button @click = "editDialog.visible = false">取 消</el-button>
+            <el-button type="primary" @click="onOk4EditDialog">确 定</el-button>
+        </div>
+    </el-dialog>
+
+    <!--  文件移动弹窗  -->
+    <el-dialog  :visible.sync="moveDialog.visible" >
+        <span slot="title" class="dialog-title" >移动文件</span>
+        <el-container style="height: 300px">
+            <el-main style="padding: 0px">
+                <el-tree
+                        ref="moveTree"
+                        :highlight-current="true"
+                        :expand-on-click-node="false"
+                        node-key="key"
+                        :props="moveDialog.props"
+                        accordion
+                        lazy
+                        :load="lazyLoadDir"
+                >
+                </el-tree>
+            </el-main>
+            <el-aside width="35px">
+                <el-row  style="text-align: right;margin-right: 10px">
+                    <el-button  @click="refreshMoveTree" size="small"  type="primary" icon="el-icon-refresh" circle title="刷新"></el-button>
+                </el-row>
+            </el-aside>
+        </el-container>
+        <div slot="footer" class="dialog-footer" >
+            <el-button @click = "moveDialog.visible = false">取 消</el-button>
+            <el-button type="primary" @click="onOk4MoveDialog">确 定</el-button>
+        </div>
+    </el-dialog>
+
+
+</div>
+
+<script >
+    Vue.prototype.$ajax = axios;
+    axios.defaults.baseURL = '../';
+    // axios.defaults.headers.common['Authorization'] = AUTH_TOKEN;
+    //axios.defaults.headers.post['Content-Type'] = 'application/x-www-form-urlencoded';
+    axios.interceptors.request.use(function (config) {
+        return config;
+    }, function (err) {
+        Message.error({message: '请求超时!'});
+        return Promise.reject(err);
+    })
+    axios.interceptors.response.use(function (data) {
+        if (data.status && data.status == 200 && data.data.status == 'error') {
+            ELEMENT.Message.error( data.data.msg);
+        }
+        return data;
+    }, function (err) {
+            if (err.response.status == 504 || err.response.status == 404) {
+                ELEMENT.Message.error({message: '服务器被吃了⊙﹏⊙∥'});
+            } else if (err.response.status == 403) {
+                ELEMENT.Message.error({message: '权限不足,请联系管理员!'});
+            } else {
+                ELEMENT.Message.error( err.response.data.message);
+            }
+            return Promise.reject(err);
+    })
+    new Vue({
+        el: '#app',
+        data: function() {
+            return {
+                metaData : [],
+                rootChar : "根",
+                tableData: [],
+                multipleSelection: [],
+                parentDir : "/",
+                editorDialog : {
+                    visible : false,
+                    textarea : "默认内容!",
+                    editorTitle : ""
+                },
+                nameDialog : {
+                    nameDialogVisible : false ,
+                    nameTitle :"",
+                    oper : "",
+                    nameDialogForm : {
+                        name : null
+                    }
+                },
+                searchValue : "",
+                uploadDialog : {
+                    visible : false,
+                    fileList : []
+                },
+                tableLoading : false,
+                moreOperationVisible : false,
+                editDialog : {
+                    visible : false,
+                    formData : {},
+                    rules : {
+                    }
+                 },
+                moveDialog: {
+                    visible : false,
+                    root : [{key: "/",name:"/"}],
+                    props:{
+                        label : "name",
+                        children : "childs",
+                        isLeaf : "leaf"
+                    }
+                }
+            }
+        },
+        created(){
+            var self=this;
+            this.$ajax.get("vfsMetaData").then(function (res) {
+                self.metaData = res.data;
+            })
+            this.repaireTableDate();
+        },
+        methods: {
+            getBreadCrumbItems(parentDir){
+                return this.arrayRemoveNull(parentDir.split("/"));
+            },
+            toggleSelection(rows) {
+                if (rows) {
+                    for (var i = 0; i < rows.length; i++) {
+                        var row = rows[i];
+                        this.$refs.multipleTable.toggleRowSelection(row);
+                    };
+                } else {
+                    this.$refs.multipleTable.clearSelection();
+                }
+            },
+            handleSelectionChange(val) {
+                this.multipleSelection = val;
+            },
+            hell(val){
+                if ( this.parentDir ==="/"){
+                    return;
+                }
+                if (val == this.rootChar ){
+                    this.parentDir = "/";
+                }else{
+                    var split= this.arrayRemoveNull(this.parentDir.split("/"))
+                    if(val==split.length-1) return;
+                    var newParentDir = "/";
+                    for (var i=0;i<=val;i++){
+                        newParentDir+=split[i]+"/";
+                    }
+                    this.parentDir = newParentDir;
+                }
+
+            },
+            showChildsOrContent(row){
+                var newPath = row.parentDir +row.name;
+                if (row.dir){
+                    this.parentDir = newPath +"/";
+                } else {
+                    this.showContent(newPath);
+                }
+
+            },
+            showContent(path){
+               this.$ajax.get("file/content"+path,{}).then(function (res) {
+                   this.editorDialog.title = path;
+                   this.editorDialog.textarea = res.data;
+                   this.editorDialog.visible = true;
+               }.bind(this));
+            },
+            arrayRemoveNull(array){   //去掉数组中的null，“”，false
+                return array.filter(function (val) {
+                    return !(!val || val === "");
+                });
+            },
+            repaireTableDate(){
+                var self=this;
+                this.tableLoading = true;
+                this.$ajax.get("file"+self.parentDir,{})
+                    .then(function (res) {
+                        self.tableData = res.data
+                        self.tableLoading = false;
+                    });
+                //清除提示（解决：当文件夹太宽，出现提示框时，点击进入下一级，提示框不消失）
+                this.clearTooltip();
+            },
+            clearTooltip(){ //清除提示
+                let tooltips = document.getElementsByClassName("el-tooltip__popper");
+                for (let i=0;i<tooltips.length; i++) {
+                    // tooltips[i].parentElement.removeChild(tooltips[i]);
+                    tooltips[i].style+=";display:none;";
+                }
+            },
+            onOk4Editor(){
+                var self = this;
+                this.$ajax.put("file/content"+ self.editorDialog.title,{content:self.editorDialog.textarea}).then(function (res) {
+                    self.$message.success("保存成功");
+                    self.repaireTableDate();
+                    self.editorDialog.visible=false;
+                });
+            },
+            onOk4NameDialog(){
+
+                this.$refs["nameDialogForm"].validate(function (valid) {
+                    if (!valid) {
+                        this.$message.error("请确认文件名正确！");
+                        return false;
+                   }else{
+                        var self=this;
+
+                        if(this.nameDialog.oper === "rename"){
+                            if(this.multipleSelection.length!=1){
+                                this.$message.error("请选择一条数据！");
+                            }
+                            var row = this.multipleSelection[0];
+                            this.$ajax.put("file/name"+row.parentDir+row.name,{newName:self.nameDialog.nameDialogForm.name}).then(function (res) {
+                                self.nameDialog.nameDialogVisible = false;
+                                self.$message.success("重命名成功！");
+                                self.repaireTableDate();
+                            });
+                        }else if (this.nameDialog.oper === "addFile") {
+                            this.$ajax.post("file"+self.parentDir,{isFile:true,name:self.nameDialog.nameDialogForm.name}).then(function (res) {
+                                self.nameDialog.nameDialogVisible = false;
+                                self.$message.success("添加文件成功！");
+                                self.repaireTableDate();
+                            })
+                        }else if(this.nameDialog.oper === "addDir"){
+                            this.$ajax.post("file"+self.parentDir,{isFile:false,name:self.nameDialog.nameDialogForm.name}).then(function (res) {
+                                self.nameDialog.nameDialogVisible = false;
+                                self.$message.success("添加文件夹成功！");
+                                self.repaireTableDate();
+                            })
+                        }
+                    }
+                }.bind(this));
+
+
+            },
+            rename(){
+                if(this.multipleSelection.length==0){
+                    this.$message("请选择一条数据！");
+                }else if (this.multipleSelection.length>1) {
+                    this.$message("一次只能操作一个文件!");
+                }else {
+                    this.nameDialog.oper = "rename";
+                    this.nameOpertion("重命名");
+                }
+            },
+            addFile(){
+                this.nameDialog.oper = "addFile";
+                this.nameOpertion("添加文件");
+            },
+            addFolder(){
+                this.nameDialog.oper = "addDir";
+                this.nameOpertion("添加文件夹") ;
+            },
+            nameOpertion(opeName){
+                    this.nameDialog.nameTitle = opeName;
+                    if(this.nameDialog.oper == "rename"){
+                        this.nameDialog.nameDialogForm.name = this.multipleSelection[0].name;
+                    }else{
+                        this.nameDialog.nameDialogForm.name = "";
+                    }
+                    this.nameDialog.nameDialogVisible = true;
+            },
+            validName(rule,value,callback){
+                if(this.nameDialog.nameTitle=="重命名" && this.multipleSelection[0].name===value){
+                    callback(new Error("不能与当前名字相同！"));
+                    return;
+                }
+                var reg=new RegExp("[`~!@#$^&*()=|{}':;',\\[\\]<>/?~！@#￥……&*（）——|{}【】‘；：”“'。，、？]");
+                if(reg.test(value)){callback(new Error('文件名不能有特殊字符'))
+                }else{
+                    callback()
+                }
+            },
+            download(){
+                if (this.multipleSelection.length==0) {
+                    this.$message("至少选中一条数据!");
+                    return
+                }
+                var self =this;
+                var paths= "";
+                for (var i = 0; i < this.multipleSelection.length; i++) {
+                    if( i != 0 ) paths+=",";
+                    paths+=this.multipleSelection[i].parentDir+this.multipleSelection[i].name;
+                }debugger
+                window.location.href=axios.defaults.baseURL+"file"+paths+"?cmd=download";
+            },
+            upload(){
+                // this.uploadDialog.fileList = [];
+                this.uploadDialog.visible=true;
+            },
+            closeOfuploadDialogEvent(){
+                this.$refs.upload.clearFiles();
+            },
+            remove(){
+                if (this.multipleSelection.length==0) {
+                    this.$message("至少选中一条数据!");
+                    return;
+                }
+                var self =this;
+                this.$confirm('此操作将永久删除文件, 是否继续?', '提示', {
+                    confirmButtonText: '确定',
+                    cancelButtonText: '取消',
+                    type: 'warning'
+                }).then(() => {
+                    var paths= "";
+                    for (var i = 0; i < self.multipleSelection.length; i++) {
+                        if( i != 0 ) paths+=",";
+                        paths+=self.multipleSelection[i].parentDir+self.multipleSelection[i].name;
+                    }
+                    self.$ajax.delete("file"+paths).then(function (res) {
+                        self.$message.success("删除成功！");
+                        self.repaireTableDate();
+                    });
+                }).catch(()=>{});
+
+            },
+            search(){
+                var self = this;
+                if(self.searchValue==null||self.searchValue==""){
+                    self.$message.warning("查找关键字不能为空！");
+                    return;
+                }
+                this.$ajax.get("file"+self.parentDir+"?cmd=search&keyword="+self.searchValue).then(function (value) {
+                    self.tableData = value.data;
+                })
+            },
+            submitUpload() {
+                this.$refs.upload.submit();
+            },
+            handleRemove(file, fileList) {
+                console.log(file, fileList);
+            },
+            handlePreview(file) {
+                console.log(file);
+            },
+            getUploadParams(){
+                return {parentDir:this.parentDir}
+            },
+            uploadError(err, file, fileList){
+                this.$message.error(JSON.parse(err.message).message)
+            },
+            uploadSuccess(response, file, fileList){
+                this.repaireTableDate();
+            },
+            uploadBefore(file){
+
+            },
+            showEditDialog: function () {
+                if (this.multipleSelection.length != 1) {
+                    this.$message("请选中一条数据!");
+                    return;
+                }
+                if (this.multipleSelection[0].dir) {
+                    this.$message("目录不能进行此操作！");
+                    return;
+                }
+                this.editDialog.formData = this.deepCopy(this.multipleSelection[0]);
+                //重新赋值metaData
+                for (let i in this.metaData) {
+                    let value1 =this.editDialog.formData.ext[this.metaData[i].name];
+                    this.$set(this.metaData[i],"value",typeof(value1)=='undefined'?null:value1);
+                }
+                this.editDialog.visible = true;
+            },
+            getRules(item){
+                var rules=[];
+                if(!item.nullable){
+                    rules.push({ required: true, message: item.caption+'不能为空!'});
+                }
+                return rules;
+            },
+            inputOfExtPro(name,value){
+                this.$set(this.editDialog.formData.ext,name,value);
+                // this.editDialog.formData.ext[name] = value;
+             },
+            onOk4EditDialog(){
+                this.$refs.editDialogForm.validate(function (bool,va) {
+                    if(bool){
+                        var self = this;
+                        this.metaData.forEach(function (value,index) {
+                            self.editDialog.formData.ext[value.name] = value.value;
+                        })
+                        this.$ajax.put("file"+self.editDialog.formData.parentDir+self.editDialog.formData.name,self.editDialog.formData)
+                            .then(function (res){
+                                self.$message.success("保存成功！");
+                                self.editDialog.visible = false;
+                                self.editDialog.formData = {};
+                                self.repaireTableDate();
+                            } )
+                    }else{
+                        return false;
+                    }
+                }.bind(this))
+
+            },
+            showMoveDialog(){
+                if (this.multipleSelection.length == 0) {
+                    this.$message("请选中至少一条数据!");
+                    return;
+                }
+                this.moveDialog.visible=true;
+            },
+            lazyLoadDir(node, resolve){   //动态加载次级选项
+                var parentDir = "";
+                if (node.level === 0) {
+                    this.moveTreeRootResolve = resolve;
+                    return resolve(this.moveDialog.root);
+                }else{
+                    parentDir = node.key+"/";
+                }
+                var self=this;
+
+                this.$ajax.get("file/treeInfo4Move"+parentDir,{})
+                    .then(function (res) {
+                        return resolve(res.data);
+                    })
+            },
+            refreshMoveTree(){
+                var self= this;
+                if(this.$refs.moveTree){
+                    var root = this.$refs.moveTree.root;
+                    this.$refs.moveTree.remove(root);
+                    root.childNodes = [];
+                    this.moveTreeRootResolve(this.moveDialog.root);
+                }
+            },
+            onOk4MoveDialog(){
+                var currentNode = this.$refs.moveTree.getCurrentNode();
+                if (currentNode==null){
+                    this.$message("请选中一个文件夹！"); return;
+                }
+                var self =this;
+                var paths= "";
+                for (var i = 0; i < this.multipleSelection.length; i++) {
+                    if( i != 0 ) paths+=",";
+                    paths+=this.multipleSelection[i].parentDir+this.multipleSelection[i].name;
+                }
+                this.$ajax.put("file/parentDir"+paths,{destDir:currentNode.key}).then(function (res) {
+                    self.$message.success("移动成功!");
+                    self.moveDialog.visible = false;
+                    self.repaireTableDate();
+                })
+            },
+            openMetaDataPage(){
+                window.open('html/extProperty.html');
+            },
+            deepCopy(obj) {
+                var result = Array.isArray(obj) ? [] : {};
+                for (var key in obj) {
+                    if (obj.hasOwnProperty(key)) {
+                        if (typeof obj[key] === 'object' && obj[key]!==null) {
+                            result[key] = this.deepCopy(obj[key]);   //递归复制
+                        } else {
+                            result[key] = obj[key];
+                        }
+                    }
+                }
+                return result;
+            },
+
+        },
+        watch :{
+            parentDir(){
+                this.repaireTableDate();
+            },
+        }
+    })
+</script>
+</body>
+</html>
